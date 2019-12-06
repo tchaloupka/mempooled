@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html>
+<head>
+        <title>mempooled.fixed source code</title>
+	<meta charset="utf-8" />
+	<meta content="width=device-width, initial-scale=1" name="viewport" />
+        <link href="../style.css" rel="stylesheet" />
+        <script src="../script.js" type="text/javascript"></script>
+
+	
+	<link href="../search-results.html" rel="prefetch" />
+</head>
+<body>
+	<div id="page-header">
+		<div id="logotype">
+		<span>Documentation</span>
+		<nav>
+			<a href="http://dlang.org/">Dlang.org</a>
+		</nav>
+		</div>
+
+		<form action="../search-docs.html" id="search">
+			<input name="searchTerm" placeholder="Find a symbol name..." type="search" />
+			<input type="submit" value="Go" />
+		</form>
+	</div>
+	<div id="page-body">
+		<div id="page-content">
+		<pre class="d_code highlighted with-line-wrappers"><a class="br" href="#L1" id="L1">1 </a><span class="kwrd">module</span> <span class="hid">mempooled.fixed</span>;
+<a class="br" href="#L2" id="L2">2 </a>
+<a class="br" href="#L3" id="L3">3 </a><span class="kwrd">debug</span> <span class="kwrd">import</span> <span class="hid">core.stdc.stdio</span>;
+<a class="br" href="#L4" id="L4">4 </a><span class="kwrd">import</span> <span class="hid">core.stdc.stdlib</span>;
+<a class="br" href="#L5" id="L5">5 </a><span class="kwrd">import</span> <span class="hid">std.conv</span> : <span class="hid">emplace</span>;
+<a class="br" href="#L6" id="L6">6 </a>
+<a class="br" href="#L7" id="L7">7 </a><span class="kwrd">nothrow</span> @<span class="hid">nogc</span>:
+<a class="br" href="#L8" id="L8">8 </a>
+<a class="br" href="#L9" id="L9">9 </a><span class="com">/**
+<a class="br" href="#L10" id="L10">10 </a> * Create instance of `FixedPool`
+<a class="br" href="#L11" id="L11">11 </a> *
+<a class="br" href="#L12" id="L12">12 </a> * Params:
+<a class="br" href="#L13" id="L13">13 </a> *      T = type of the pooled item
+<a class="br" href="#L14" id="L14">14 </a> *      blockSize = size of one block in a pool
+<a class="br" href="#L15" id="L15">15 </a> *      size = number of items
+<a class="br" href="#L16" id="L16">16 </a> *      buffer = optional buffer to initiate `FixedPool` over
+<a class="br" href="#L17" id="L17">17 </a> */</span>
+<a class="br" href="#L18" id="L18">18 </a><span class="kwrd">auto</span> <a class="hid" href="mempooled.fixed.d.html#L18" title="mempooled.fixed.fixedPool">fixedPool</a>(<span class="hid">T</span>, <span class="hid">size_t</span> <span class="hid">size</span>)(<span class="type">ubyte</span>[] <span class="hid">buffer</span> = <span class="kwrd">null</span>)
+<a class="br" href="#L19" id="L19">19 </a>{
+<a class="br" href="#L20" id="L20">20 </a>    <span class="kwrd">auto</span> <span class="hid">res</span> = <a class="hid" href="mempooled.fixed.d.html#L52" title="mempooled.fixed.FixedPool">FixedPool</a>!(<span class="hid">T.sizeof</span>, <span class="hid">size</span>, <span class="hid">T</span>)();
+<a class="br" href="#L21" id="L21">21 </a>    <span class="hid">res.initPool</span>(<span class="hid">buffer</span>);
+<a class="br" href="#L22" id="L22">22 </a>    <span class="kwrd">return</span> <span class="hid">res</span>;
+<a class="br" href="#L23" id="L23">23 </a>}
+<a class="br" href="#L24" id="L24">24 </a>
+<a class="br" href="#L25" id="L25">25 </a><span class="com">/// ditto</span>
+<a class="br" href="#L26" id="L26">26 </a><span class="kwrd">auto</span> <a class="hid" href="mempooled.fixed.d.html#L18" title="mempooled.fixed.fixedPool">fixedPool</a>(<span class="hid">size_t</span> <span class="hid">blockSize</span>, <span class="hid">size_t</span> <span class="hid">numBlocks</span>)(<span class="type">ubyte</span>[] <span class="hid">buffer</span> = <span class="kwrd">null</span>)
+<a class="br" href="#L27" id="L27">27 </a>{
+<a class="br" href="#L28" id="L28">28 </a>    <span class="kwrd">auto</span> <span class="hid">res</span> = <a class="hid" href="mempooled.fixed.d.html#L52" title="mempooled.fixed.FixedPool">FixedPool</a>!(<span class="hid">blockSize</span>, <span class="hid">numBlocks</span>, <span class="type">void</span>)();
+<a class="br" href="#L29" id="L29">29 </a>    <span class="hid">res.initPool</span>(<span class="hid">buffer</span>);
+<a class="br" href="#L30" id="L30">30 </a>    <span class="kwrd">return</span> <span class="hid">res</span>;
+<a class="br" href="#L31" id="L31">31 </a>}
+<a class="br" href="#L32" id="L32">32 </a>
+<a class="br" href="#L33" id="L33">33 </a><span class="com">/**
+<a class="br" href="#L34" id="L34">34 </a> * Implementation of &quot;Fast Efficient Fixed-Size Memory Pool&quot; as described in this article:
+<a class="br" href="#L35" id="L35">35 </a> * www.thinkmind.org/download.php?articleid=computation_tools_2012_1_10_80006
+<a class="br" href="#L36" id="L36">36 </a> *
+<a class="br" href="#L37" id="L37">37 </a> * Implementation of &quot;Fast Efficient Fixed-Size Memory Pool&quot; as described in
+<a class="br" href="#L38" id="L38">38 </a> * [this](www.thinkmind.org/download.php?articleid=computation_tools_2012_1_10_80006) article.
+<a class="br" href="#L39" id="L39">39 </a> *
+<a class="br" href="#L40" id="L40">40 </a> * It can work as a pool for single templated type or generic pool with a fixed block size (so one
+<a class="br" href="#L41" id="L41">41 </a> * can `alloc` various types with size less or equal to the block size).
+<a class="br" href="#L42" id="L42">42 </a> *
+<a class="br" href="#L43" id="L43">43 </a> * Minimal block size is 4B as data in blocks are used internally to form a linked list of the blocks.
+<a class="br" href="#L44" id="L44">44 </a> *
+<a class="br" href="#L45" id="L45">45 </a> * Params:
+<a class="br" href="#L46" id="L46">46 </a> *      blockSize = size of one item block in a pool
+<a class="br" href="#L47" id="L47">47 </a> *      numBlock = number of blocks in a pool
+<a class="br" href="#L48" id="L48">48 </a> *      T = optional forced type of pooled items - if used, pool is forced to provide items of this type only
+<a class="br" href="#L49" id="L49">49 </a> *
+<a class="br" href="#L50" id="L50">50 </a> * See_Also: implementation here: https://github.com/green-anger/MemoryPool
+<a class="br" href="#L51" id="L51">51 </a> */</span>
+<a class="br" href="#L52" id="L52">52 </a><span class="kwrd">struct</span> <a class="hid" href="mempooled.fixed.d.html#L52" title="mempooled.fixed.FixedPool">FixedPool</a>(<span class="hid">size_t</span> <span class="hid">blockSize</span>, <span class="hid">size_t</span> <span class="hid">numBlocks</span>, <span class="hid">T</span> = <span class="type">void</span>)
+<a class="br" href="#L53" id="L53">53 </a>{
+<a class="br" href="#L54" id="L54">54 </a>    <span class="kwrd">nothrow</span> @<span class="hid">nogc</span>:
+<a class="br" href="#L55" id="L55">55 </a>
+<a class="br" href="#L56" id="L56">56 </a>    <span class="kwrd">static</span> <span class="kwrd">assert</span>(<span class="hid">blockSize</span> &gt;= <span class="num">4</span>, <span class="str">&quot;blockSize must be equal or greater than uint.sizeof&quot;</span>);
+<a class="br" href="#L57" id="L57">57 </a>    <span class="kwrd">static</span> <span class="kwrd">if</span> (!<span class="kwrd">is</span>(<span class="hid">T</span> == <span class="type">void</span>))
+<a class="br" href="#L58" id="L58">58 </a>    {
+<a class="br" href="#L59" id="L59">59 </a>        <span class="kwrd">static</span> <span class="kwrd">assert</span>(<span class="hid">T.sizeof</span> == <span class="hid">blockSize</span>, <span class="str">&quot;Blocksize must be the same as used T.sizeof&quot;</span>);
+<a class="br" href="#L60" id="L60">60 </a>    }
+<a class="br" href="#L61" id="L61">61 </a>
+<a class="br" href="#L62" id="L62">62 </a>    <span class="kwrd">private</span>
+<a class="br" href="#L63" id="L63">63 </a>    {
+<a class="br" href="#L64" id="L64">64 </a>        <span class="kwrd">struct</span> <span class="hid">Payload</span>
+<a class="br" href="#L65" id="L65">65 </a>        {
+<a class="br" href="#L66" id="L66">66 </a>            <span class="kwrd">nothrow</span> @<span class="hid">nogc</span>:
+<a class="br" href="#L67" id="L67">67 </a>
+<a class="br" href="#L68" id="L68">68 </a>            <span class="type">ubyte</span>* <span class="hid">memStart</span>;        <span class="com">// Beginning of memory pool</span>
+<a class="br" href="#L69" id="L69">69 </a>            <span class="type">ubyte</span>* <span class="hid">next</span>;            <span class="com">// Num of next free block</span>
+<a class="br" href="#L70" id="L70">70 </a>            <span class="type">uint</span> <span class="hid">numFreeBlocks</span>;     <span class="com">// Num of remaining blocks</span>
+<a class="br" href="#L71" id="L71">71 </a>            <span class="type">uint</span> <span class="hid">numInitialized</span>;    <span class="com">// Num of initialized blocks</span>
+<a class="br" href="#L72" id="L72">72 </a>            <span class="hid">size_t</span> <span class="hid">refs</span>;            <span class="com">// Number of references</span>
+<a class="br" href="#L73" id="L73">73 </a>            <span class="type">bool</span> <span class="hid">ownPool</span>;           <span class="com">// Is memory block allocated by us?</span>
+<a class="br" href="#L74" id="L74">74 </a>
+<a class="br" href="#L75" id="L75">75 </a>            <span class="type">void</span> <span class="hid">initialize</span>(<span class="type">ubyte</span>[] <span class="hid">buffer</span>)
+<a class="br" href="#L76" id="L76">76 </a>            {
+<a class="br" href="#L77" id="L77">77 </a>                <span class="kwrd">assert</span>(<span class="hid">buffer</span> <span class="kwrd">is</span> <span class="kwrd">null</span> || <span class="hid">buffer.length</span> == <span class="hid">numBlocks</span> * <span class="hid">blockSize</span>, <span class="str">&quot;Provided buffer has wrong size, must be numBlocks*blockSize&quot;</span>);
+<a class="br" href="#L78" id="L78">78 </a>                <span class="kwrd">if</span> (<span class="hid">buffer</span>) <span class="hid">memStart</span> = &amp;<span class="hid">buffer</span>[<span class="num">0</span>];
+<a class="br" href="#L79" id="L79">79 </a>                <span class="kwrd">else</span>
+<a class="br" href="#L80" id="L80">80 </a>                {
+<a class="br" href="#L81" id="L81">81 </a>                    <span class="hid">memStart</span> = <span class="kwrd">cast</span>(<span class="type">ubyte</span>*)<span class="hid">calloc</span>(<span class="hid">numBlocks</span>, <span class="hid">blockSize</span>);
+<a class="br" href="#L82" id="L82">82 </a>                    <span class="kwrd">assert</span>(<span class="hid">memStart</span>, <span class="str">&quot;failed to allocate pool&quot;</span>);
+<a class="br" href="#L83" id="L83">83 </a>                    <span class="hid">ownPool</span> = <span class="kwrd">true</span>;
+<a class="br" href="#L84" id="L84">84 </a>                }
+<a class="br" href="#L85" id="L85">85 </a>
+<a class="br" href="#L86" id="L86">86 </a>                <span class="hid">next</span> = <span class="hid">memStart</span>;
+<a class="br" href="#L87" id="L87">87 </a>                <span class="hid">numFreeBlocks</span> = <span class="hid">numBlocks</span>;
+<a class="br" href="#L88" id="L88">88 </a>                <span class="hid">refs</span> = <span class="num">1</span>;
+<a class="br" href="#L89" id="L89">89 </a>            }
+<a class="br" href="#L90" id="L90">90 </a>
+<a class="br" href="#L91" id="L91">91 </a>            ~<span class="kwrd">this</span>()
+<a class="br" href="#L92" id="L92">92 </a>            {
+<a class="br" href="#L93" id="L93">93 </a>                <span class="kwrd">assert</span>(<span class="hid">memStart</span>, <span class="str">&quot;memStart is null&quot;</span>);
+<a class="br" href="#L94" id="L94">94 </a>                <span class="kwrd">if</span> (<span class="hid">ownPool</span>) <span class="hid">free</span>(<span class="hid">memStart</span>);
+<a class="br" href="#L95" id="L95">95 </a>            }
+<a class="br" href="#L96" id="L96">96 </a>        }
+<a class="br" href="#L97" id="L97">97 </a>
+<a class="br" href="#L98" id="L98">98 </a>        <span class="hid">Payload</span>* <span class="hid">pay</span>;
+<a class="br" href="#L99" id="L99">99 </a>    }
+<a class="br" href="#L100" id="L100">100 </a>
+<a class="br" href="#L101" id="L101">101 </a>    <span class="com">/// Copy constructor</span>
+<a class="br" href="#L102" id="L102">102 </a>    <span class="kwrd">this</span>(<span class="kwrd">ref</span> <span class="kwrd">return</span> <span class="kwrd">scope</span> <span class="kwrd">typeof</span>(<span class="kwrd">this</span>) <span class="hid">rhs</span>)
+<a class="br" href="#L103" id="L103">103 </a>    {
+<a class="br" href="#L104" id="L104">104 </a>        <span class="com">// debug printf(&quot;copy\n&quot;);</span>
+<a class="br" href="#L105" id="L105">105 </a>        <span class="kwrd">if</span> (<span class="hid">rhs.pay</span> <span class="kwrd">is</span> <span class="kwrd">null</span>) <span class="hid">initPool</span>();
+<a class="br" href="#L106" id="L106">106 </a>        <span class="kwrd">else</span>
+<a class="br" href="#L107" id="L107">107 </a>        {
+<a class="br" href="#L108" id="L108">108 </a>            <span class="kwrd">this</span>.<span class="hid">pay</span> = <span class="hid">rhs.pay</span>;
+<a class="br" href="#L109" id="L109">109 </a>            <span class="kwrd">this</span>.<span class="hid">pay.refs</span>++;
+<a class="br" href="#L110" id="L110">110 </a>        }
+<a class="br" href="#L111" id="L111">111 </a>    }
+<a class="br" href="#L112" id="L112">112 </a>
+<a class="br" href="#L113" id="L113">113 </a>    ~<span class="kwrd">this</span>()
+<a class="br" href="#L114" id="L114">114 </a>    {
+<a class="br" href="#L115" id="L115">115 </a>        <span class="kwrd">if</span> (<span class="hid">pay</span>)
+<a class="br" href="#L116" id="L116">116 </a>        {
+<a class="br" href="#L117" id="L117">117 </a>            <span class="hid">pay.refs</span>--;
+<a class="br" href="#L118" id="L118">118 </a>            <span class="com">// debug printf(&quot;destroy: refs=%d\n&quot;, pay.refs);</span>
+<a class="br" href="#L119" id="L119">119 </a>            <span class="kwrd">if</span> (<span class="hid">pay.refs</span> == <span class="num">0</span>)
+<a class="br" href="#L120" id="L120">120 </a>            {
+<a class="br" href="#L121" id="L121">121 </a>                <span class="com">// debug printf(&quot;free\n&quot;);</span>
+<a class="br" href="#L122" id="L122">122 </a>                <span class="hid">destroy</span>(*<span class="hid">pay</span>); <span class="com">// call payload destructor</span>
+<a class="br" href="#L123" id="L123">123 </a>                <span class="hid">free</span>(<span class="hid">pay</span>);
+<a class="br" href="#L124" id="L124">124 </a>            }
+<a class="br" href="#L125" id="L125">125 </a>        }
+<a class="br" href="#L126" id="L126">126 </a>    }
+<a class="br" href="#L127" id="L127">127 </a>
+<a class="br" href="#L128" id="L128">128 </a>    <span class="hid">size_t</span> <span class="hid">capacity</span>() <span class="kwrd">const</span>
+<a class="br" href="#L129" id="L129">129 </a>    {
+<a class="br" href="#L130" id="L130">130 </a>        <span class="kwrd">if</span> (<span class="hid">pay</span> <span class="kwrd">is</span> <span class="kwrd">null</span>) <span class="kwrd">return</span> <span class="hid">numBlocks</span>;
+<a class="br" href="#L131" id="L131">131 </a>        <span class="kwrd">return</span> <span class="hid">pay.numFreeBlocks</span>;
+<a class="br" href="#L132" id="L132">132 </a>    }
+<a class="br" href="#L133" id="L133">133 </a>
+<a class="br" href="#L134" id="L134">134 </a>    <span class="kwrd">static</span> <span class="kwrd">if</span> (<span class="kwrd">is</span>(<span class="hid">T</span> == <span class="type">void</span>)) <span class="com">// allow to allocate anything that fits</span>
+<a class="br" href="#L135" id="L135">135 </a>    {
+<a class="br" href="#L136" id="L136">136 </a>        <span class="hid">U</span>* <span class="hid">alloc</span>(<span class="hid">U</span>, <span class="hid">ARGS</span>...)(<span class="hid">ARGS</span> <span class="hid">args</span>)
+<a class="br" href="#L137" id="L137">137 </a>        {
+<a class="br" href="#L138" id="L138">138 </a>            <span class="kwrd">static</span> <span class="kwrd">assert</span>(<span class="hid">U.sizeof</span> &lt;= <span class="hid">blockSize</span>, <span class="hid">format</span>!<span class="str">&quot;Can't allocate %s of size %s with blockSize=%s&quot;</span>(<span class="hid">U</span>, <span class="hid">U.sizeof</span>, <span class="hid">blockSize</span>));
+<a class="br" href="#L139" id="L139">139 </a>            <span class="type">void</span>* <span class="hid">p</span> = <span class="hid">allocImpl</span>();
+<a class="br" href="#L140" id="L140">140 </a>            <span class="kwrd">if</span> (<span class="hid">p</span>) <span class="kwrd">return</span> <span class="hid">emplace</span>(<span class="kwrd">cast</span>(<span class="hid">U</span>*)<span class="hid">p</span>, <span class="hid">args</span>);
+<a class="br" href="#L141" id="L141">141 </a>            <span class="kwrd">return</span> <span class="kwrd">null</span>;
+<a class="br" href="#L142" id="L142">142 </a>        }
+<a class="br" href="#L143" id="L143">143 </a>
+<a class="br" href="#L144" id="L144">144 </a>        <span class="type">void</span> <span class="hid">dealloc</span>(<span class="hid">U</span>)(<span class="hid">U</span>* <span class="hid">p</span>)
+<a class="br" href="#L145" id="L145">145 </a>        {
+<a class="br" href="#L146" id="L146">146 </a>            <span class="hid">deallocImpl</span>(<span class="hid">p</span>);
+<a class="br" href="#L147" id="L147">147 </a>        }
+<a class="br" href="#L148" id="L148">148 </a>    }
+<a class="br" href="#L149" id="L149">149 </a>    <span class="kwrd">else</span>
+<a class="br" href="#L150" id="L150">150 </a>    {
+<a class="br" href="#L151" id="L151">151 </a>        <span class="hid">T</span>* <span class="hid">alloc</span>(<span class="hid">ARGS</span>...)(<span class="hid">ARGS</span> <span class="hid">args</span>)
+<a class="br" href="#L152" id="L152">152 </a>        {
+<a class="br" href="#L153" id="L153">153 </a>            <span class="type">void</span>* <span class="hid">p</span> = <span class="hid">allocImpl</span>();
+<a class="br" href="#L154" id="L154">154 </a>            <span class="kwrd">if</span> (<span class="hid">p</span>) <span class="kwrd">return</span> <span class="hid">emplace</span>(<span class="kwrd">cast</span>(<span class="hid">T</span>*)<span class="hid">p</span>, <span class="hid">args</span>);
+<a class="br" href="#L155" id="L155">155 </a>            <span class="kwrd">return</span> <span class="kwrd">null</span>;
+<a class="br" href="#L156" id="L156">156 </a>        }
+<a class="br" href="#L157" id="L157">157 </a>
+<a class="br" href="#L158" id="L158">158 </a>        <span class="type">void</span> <span class="hid">dealloc</span>(<span class="hid">T</span>* <span class="hid">p</span>)
+<a class="br" href="#L159" id="L159">159 </a>        {
+<a class="br" href="#L160" id="L160">160 </a>            <span class="hid">deallocImpl</span>(<span class="hid">p</span>);
+<a class="br" href="#L161" id="L161">161 </a>        }
+<a class="br" href="#L162" id="L162">162 </a>    }
+<a class="br" href="#L163" id="L163">163 </a>
+<a class="br" href="#L164" id="L164">164 </a>    <span class="kwrd">private</span>:
+<a class="br" href="#L165" id="L165">165 </a>
+<a class="br" href="#L166" id="L166">166 </a>    <span class="type">void</span> <span class="hid">initPool</span>(<span class="type">ubyte</span>[] <span class="hid">buffer</span> = <span class="kwrd">null</span>)
+<a class="br" href="#L167" id="L167">167 </a>    {
+<a class="br" href="#L168" id="L168">168 </a>        <span class="kwrd">assert</span>(<span class="hid">pay</span> <span class="kwrd">is</span> <span class="kwrd">null</span>);
+<a class="br" href="#L169" id="L169">169 </a>        <span class="com">// debug printf(&quot;init\n&quot;);</span>
+<a class="br" href="#L170" id="L170">170 </a>        <span class="hid">pay</span> = <span class="kwrd">cast</span>(<span class="hid">Payload</span>*)<span class="hid">malloc</span>(<span class="hid">Payload.sizeof</span>);
+<a class="br" href="#L171" id="L171">171 </a>        <span class="hid">emplace</span>(<span class="hid">pay</span>);
+<a class="br" href="#L172" id="L172">172 </a>        <span class="hid">pay.initialize</span>(<span class="hid">buffer</span>);
+<a class="br" href="#L173" id="L173">173 </a>    }
+<a class="br" href="#L174" id="L174">174 </a>
+<a class="br" href="#L175" id="L175">175 </a>    <span class="type">void</span>* <span class="hid">allocImpl</span>()
+<a class="br" href="#L176" id="L176">176 </a>    {
+<a class="br" href="#L177" id="L177">177 </a>        <span class="kwrd">if</span> (<span class="hid">pay</span> <span class="kwrd">is</span> <span class="kwrd">null</span>) <span class="hid">initPool</span>();
+<a class="br" href="#L178" id="L178">178 </a>
+<a class="br" href="#L179" id="L179">179 </a>        <span class="com">// make sure that list of unused blocks is correct when allocating</span>
+<a class="br" href="#L180" id="L180">180 </a>        <span class="kwrd">if</span> (<span class="hid">pay.numInitialized</span> &lt; <span class="hid">numBlocks</span>)
+<a class="br" href="#L181" id="L181">181 </a>        {
+<a class="br" href="#L182" id="L182">182 </a>            <span class="type">uint</span>* <span class="hid">p</span> = <span class="kwrd">cast</span>(<span class="type">uint</span>*)<span class="hid">addrFromIdx</span>(<span class="hid">pay.numInitialized</span>);
+<a class="br" href="#L183" id="L183">183 </a>            *<span class="hid">p</span> = ++<span class="hid">pay.numInitialized</span>;
+<a class="br" href="#L184" id="L184">184 </a>        }
+<a class="br" href="#L185" id="L185">185 </a>
+<a class="br" href="#L186" id="L186">186 </a>        <span class="type">void</span>* <span class="hid">ret</span>;
+<a class="br" href="#L187" id="L187">187 </a>        <span class="kwrd">if</span> (<span class="hid">pay.numFreeBlocks</span> &gt; <span class="num">0</span>)
+<a class="br" href="#L188" id="L188">188 </a>        {
+<a class="br" href="#L189" id="L189">189 </a>            <span class="hid">ret</span> = <span class="kwrd">cast</span>(<span class="type">void</span>*)<span class="hid">pay.next</span>;
+<a class="br" href="#L190" id="L190">190 </a>            <span class="kwrd">if</span> (--<span class="hid">pay.numFreeBlocks</span> != <span class="num">0</span>)
+<a class="br" href="#L191" id="L191">191 </a>                <span class="hid">pay.next</span> = <span class="hid">addrFromIdx</span>(*(<span class="kwrd">cast</span>(<span class="type">uint</span>*)<span class="hid">pay.next</span>));
+<a class="br" href="#L192" id="L192">192 </a>            <span class="kwrd">else</span> <span class="hid">pay.next</span> = <span class="kwrd">null</span>;
+<a class="br" href="#L193" id="L193">193 </a>        }
+<a class="br" href="#L194" id="L194">194 </a>        <span class="kwrd">return</span> <span class="hid">ret</span>;
+<a class="br" href="#L195" id="L195">195 </a>    }
+<a class="br" href="#L196" id="L196">196 </a>
+<a class="br" href="#L197" id="L197">197 </a>    <span class="type">void</span> <span class="hid">deallocImpl</span>(<span class="hid">U</span>)(<span class="hid">U</span>* <span class="hid">p</span>)
+<a class="br" href="#L198" id="L198">198 </a>    {
+<a class="br" href="#L199" id="L199">199 </a>        <span class="kwrd">assert</span>(
+<a class="br" href="#L200" id="L200">200 </a>            <span class="kwrd">cast</span>(<span class="type">ubyte</span>*)<span class="hid">p</span> &gt;= <span class="hid">pay.memStart</span>  &amp;&amp; <span class="kwrd">cast</span>(<span class="type">ubyte</span>*)<span class="hid">p</span> &lt; (<span class="hid">pay.memStart</span> + <span class="hid">numBlocks</span>*<span class="hid">blockSize</span>),
+<a class="br" href="#L201" id="L201">201 </a>            <span class="str">&quot;Out of bounds&quot;</span>
+<a class="br" href="#L202" id="L202">202 </a>        );
+<a class="br" href="#L203" id="L203">203 </a>        <span class="kwrd">assert</span>((<span class="kwrd">cast</span>(<span class="type">ubyte</span>*)<span class="hid">p</span> - <span class="hid">pay.memStart</span>) % <span class="hid">blockSize</span> == <span class="num">0</span>, <span class="str">&quot;Invalid item memory offset&quot;</span>);
+<a class="br" href="#L204" id="L204">204 </a>
+<a class="br" href="#L205" id="L205">205 </a>        <span class="kwrd">import</span> <span class="hid">std.traits</span> : <span class="hid">hasElaborateDestructor</span>;
+<a class="br" href="#L206" id="L206">206 </a>        <span class="kwrd">static</span> <span class="kwrd">if</span> (<span class="hid">hasElaborateDestructor</span>!<span class="hid">U</span>)
+<a class="br" href="#L207" id="L207">207 </a>            <span class="hid">destroy</span>(*<span class="hid">p</span>); <span class="com">// call possible destructors</span>
+<a class="br" href="#L208" id="L208">208 </a>
+<a class="br" href="#L209" id="L209">209 </a>        <span class="com">// store index of prev next to newly returned item</span>
+<a class="br" href="#L210" id="L210">210 </a>        <span class="kwrd">if</span> (<span class="hid">pay.next</span> !<span class="kwrd">is</span> <span class="kwrd">null</span>)
+<a class="br" href="#L211" id="L211">211 </a>            *(<span class="kwrd">cast</span>(<span class="type">uint</span>*)<span class="hid">p</span>) = <span class="hid">idxFromAddr</span>(<span class="hid">pay.next</span>);
+<a class="br" href="#L212" id="L212">212 </a>        <span class="kwrd">else</span>
+<a class="br" href="#L213" id="L213">213 </a>            *(<span class="kwrd">cast</span>(<span class="type">uint</span>*)<span class="hid">p</span>) = <span class="hid">numBlocks</span>;
+<a class="br" href="#L214" id="L214">214 </a>
+<a class="br" href="#L215" id="L215">215 </a>        <span class="com">// and use returned item as next free one</span>
+<a class="br" href="#L216" id="L216">216 </a>        <span class="hid">pay.next</span> = <span class="kwrd">cast</span>(<span class="type">ubyte</span>*)<span class="hid">p</span>;
+<a class="br" href="#L217" id="L217">217 </a>        ++<span class="hid">pay.numFreeBlocks</span>;
+<a class="br" href="#L218" id="L218">218 </a>    }
+<a class="br" href="#L219" id="L219">219 </a>
+<a class="br" href="#L220" id="L220">220 </a>    <span class="type">ubyte</span>* <span class="hid">addrFromIdx</span>(<span class="type">uint</span> <span class="hid">i</span>) <span class="kwrd">const</span>
+<a class="br" href="#L221" id="L221">221 </a>    {
+<a class="br" href="#L222" id="L222">222 </a>        <span class="kwrd">pragma</span>(<span class="hid">inline</span>)
+<a class="br" href="#L223" id="L223">223 </a>        <span class="kwrd">return</span> <span class="kwrd">cast</span>(<span class="type">ubyte</span>*)(<span class="hid">pay.memStart</span> + ( <span class="hid">i</span> * <span class="hid">blockSize</span>));
+<a class="br" href="#L224" id="L224">224 </a>    }
+<a class="br" href="#L225" id="L225">225 </a>
+<a class="br" href="#L226" id="L226">226 </a>    <span class="type">uint</span> <span class="hid">idxFromAddr</span>(<span class="kwrd">const</span> <span class="type">ubyte</span>* <span class="hid">p</span>) <span class="kwrd">const</span>
+<a class="br" href="#L227" id="L227">227 </a>    {
+<a class="br" href="#L228" id="L228">228 </a>        <span class="kwrd">pragma</span>(<span class="hid">inline</span>)
+<a class="br" href="#L229" id="L229">229 </a>        <span class="kwrd">return</span> ((<span class="kwrd">cast</span>(<span class="type">uint</span>)(<span class="hid">p</span> - <span class="hid">pay.memStart</span>)) / <span class="hid">blockSize</span>);
+<a class="br" href="#L230" id="L230">230 </a>    }
+<a class="br" href="#L231" id="L231">231 </a>}
+<a class="br" href="#L232" id="L232">232 </a>
+<a class="br" href="#L233" id="L233">233 </a>@(<span class="str">&quot;internal implementation test&quot;</span>)
+<a class="br" href="#L234" id="L234">234 </a><span class="kwrd">unittest</span>
+<a class="br" href="#L235" id="L235">235 </a>{
+<a class="br" href="#L236" id="L236">236 </a>    <span class="kwrd">auto</span> <span class="hid">pool</span> = <a class="hid" href="mempooled.fixed.d.html#L18" title="mempooled.fixed.fixedPool">fixedPool</a>!(<span class="type">int</span>, <span class="num">10</span>);
+<a class="br" href="#L237" id="L237">237 </a>    <span class="kwrd">foreach</span> (<span class="hid">i</span>; <span class="num">0</span>..<span class="num">10</span>)
+<a class="br" href="#L238" id="L238">238 </a>    {
+<a class="br" href="#L239" id="L239">239 </a>        <span class="kwrd">auto</span> <span class="hid">item</span> = <span class="hid">pool.alloc</span>;
+<a class="br" href="#L240" id="L240">240 </a>        <span class="kwrd">assert</span>(*<span class="hid">item</span> == <span class="num">0</span>);
+<a class="br" href="#L241" id="L241">241 </a>        *<span class="hid">item</span> = <span class="hid">i</span>;
+<a class="br" href="#L242" id="L242">242 </a>    }
+<a class="br" href="#L243" id="L243">243 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.capacity</span> == <span class="num">0</span>);
+<a class="br" href="#L244" id="L244">244 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.pay.next</span> <span class="kwrd">is</span> <span class="kwrd">null</span>);
+<a class="br" href="#L245" id="L245">245 </a>
+<a class="br" href="#L246" id="L246">246 </a>    <span class="hid">pool.dealloc</span>(<span class="kwrd">cast</span>(<span class="type">int</span>*)<span class="hid">pool.pay.memStart</span>); <span class="com">// dealocate first</span>
+<a class="br" href="#L247" id="L247">247 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.capacity</span> == <span class="num">1</span>);
+<a class="br" href="#L248" id="L248">248 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.pay.next</span> == <span class="hid">pool.pay.memStart</span>);
+<a class="br" href="#L249" id="L249">249 </a>
+<a class="br" href="#L250" id="L250">250 </a>    <span class="kwrd">auto</span> <span class="hid">i</span> = <span class="hid">pool.alloc</span>();
+<a class="br" href="#L251" id="L251">251 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.capacity</span> == <span class="num">0</span>);
+<a class="br" href="#L252" id="L252">252 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.pay.next</span> <span class="kwrd">is</span> <span class="kwrd">null</span>);
+<a class="br" href="#L253" id="L253">253 </a>
+<a class="br" href="#L254" id="L254">254 </a>    <span class="hid">pool.dealloc</span>(<span class="kwrd">cast</span>(<span class="type">int</span>*)<span class="hid">pool.pay.memStart</span>); <span class="com">// dealocate it back</span>
+<a class="br" href="#L255" id="L255">255 </a>    <span class="hid">pool.dealloc</span>(<span class="kwrd">cast</span>(<span class="type">int</span>*)(<span class="hid">pool.pay.memStart</span> + <span class="type">int</span>.<span class="hid">sizeof</span>*<span class="num">9</span>)); <span class="com">// deallocate last one</span>
+<a class="br" href="#L256" id="L256">256 </a>    <span class="kwrd">auto</span> <span class="hid">p</span> = <span class="hid">pool.alloc</span>;
+<a class="br" href="#L257" id="L257">257 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.pay.next</span> == <span class="hid">pool.pay.memStart</span>);
+<a class="br" href="#L258" id="L258">258 </a>    <span class="kwrd">assert</span>(<span class="kwrd">cast</span>(<span class="type">ubyte</span>*)<span class="hid">p</span> == <span class="hid">pool.pay.memStart</span> + <span class="type">int</span>.<span class="hid">sizeof</span>*<span class="num">9</span>);
+<a class="br" href="#L259" id="L259">259 </a>}
+<a class="br" href="#L260" id="L260">260 </a>
+<a class="br" href="#L261" id="L261">261 </a>@(<span class="str">&quot;payload destructor&quot;</span>)
+<a class="br" href="#L262" id="L262">262 </a><span class="kwrd">unittest</span>
+<a class="br" href="#L263" id="L263">263 </a>{
+<a class="br" href="#L264" id="L264">264 </a>    <span class="kwrd">static</span> <span class="type">int</span> <span class="hid">refs</span>;
+<a class="br" href="#L265" id="L265">265 </a>    <span class="kwrd">struct</span> <span class="hid">Foo</span>
+<a class="br" href="#L266" id="L266">266 </a>    {
+<a class="br" href="#L267" id="L267">267 </a>        ~<span class="kwrd">this</span>() <span class="kwrd">nothrow</span> @<span class="hid">nogc</span> { <span class="hid">refs</span>--; }
+<a class="br" href="#L268" id="L268">268 </a>    }
+<a class="br" href="#L269" id="L269">269 </a>
+<a class="br" href="#L270" id="L270">270 </a>    <span class="kwrd">auto</span> <span class="hid">pool</span> = <a class="hid" href="mempooled.fixed.d.html#L18" title="mempooled.fixed.fixedPool">fixedPool</a>!(<span class="hid">Foo</span>, <span class="num">10</span>);
+<a class="br" href="#L271" id="L271">271 </a>    <span class="kwrd">alias</span> <span class="hid">PFoo</span> = <span class="hid">Foo</span>*;
+<a class="br" href="#L272" id="L272">272 </a>
+<a class="br" href="#L273" id="L273">273 </a>    <span class="hid">PFoo</span>[<span class="num">10</span>] <span class="hid">foos</span>;
+<a class="br" href="#L274" id="L274">274 </a>    <span class="kwrd">foreach</span> (<span class="hid">i</span>; <span class="num">0</span>..<span class="num">10</span>) <span class="hid">foos</span>[<span class="hid">i</span>] = <span class="hid">pool.alloc</span>();
+<a class="br" href="#L275" id="L275">275 </a>    <span class="hid">refs</span> = <span class="num">10</span>;
+<a class="br" href="#L276" id="L276">276 </a>    <span class="kwrd">foreach</span> (<span class="hid">i</span>; <span class="num">0</span>..<span class="num">10</span>) <span class="hid">pool.dealloc</span>(<span class="hid">foos</span>[<span class="hid">i</span>]);
+<a class="br" href="#L277" id="L277">277 </a>    <span class="kwrd">assert</span>(<span class="hid">refs</span> == <span class="num">0</span>);
+<a class="br" href="#L278" id="L278">278 </a>}
+<a class="br" href="#L279" id="L279">279 </a>
+<a class="br" href="#L280" id="L280">280 </a>@(<span class="str">&quot;capacity&quot;</span>)
+<a class="br" href="#L281" id="L281">281 </a><span class="kwrd">unittest</span>
+<a class="br" href="#L282" id="L282">282 </a>{
+<a class="br" href="#L283" id="L283">283 </a>    <span class="kwrd">auto</span> <span class="hid">pool</span> = <a class="hid" href="mempooled.fixed.d.html#L18" title="mempooled.fixed.fixedPool">fixedPool</a>!(<span class="type">int</span>, <span class="num">10</span>);
+<a class="br" href="#L284" id="L284">284 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.capacity</span> == <span class="num">10</span>);
+<a class="br" href="#L285" id="L285">285 </a>    <span class="kwrd">foreach</span> (<span class="hid">_</span>; <span class="num">0</span>..<span class="num">10</span>)
+<a class="br" href="#L286" id="L286">286 </a>    {
+<a class="br" href="#L287" id="L287">287 </a>        <span class="kwrd">auto</span> <span class="hid">p</span> = <span class="hid">pool.alloc</span>();
+<a class="br" href="#L288" id="L288">288 </a>        <span class="kwrd">assert</span>(<span class="hid">p</span> !<span class="kwrd">is</span> <span class="kwrd">null</span>);
+<a class="br" href="#L289" id="L289">289 </a>    }
+<a class="br" href="#L290" id="L290">290 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.capacity</span> == <span class="num">0</span>);
+<a class="br" href="#L291" id="L291">291 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.alloc</span>() <span class="kwrd">is</span> <span class="kwrd">null</span>); <span class="com">// no more space</span>
+<a class="br" href="#L292" id="L292">292 </a>}
+<a class="br" href="#L293" id="L293">293 </a>
+<a class="br" href="#L294" id="L294">294 </a>@(<span class="str">&quot;untyped&quot;</span>)
+<a class="br" href="#L295" id="L295">295 </a><span class="kwrd">unittest</span>
+<a class="br" href="#L296" id="L296">296 </a>{
+<a class="br" href="#L297" id="L297">297 </a>    <span class="kwrd">static</span> <span class="type">int</span> <span class="hid">refs</span>;
+<a class="br" href="#L298" id="L298">298 </a>    <span class="kwrd">struct</span> <span class="hid">Foo</span>
+<a class="br" href="#L299" id="L299">299 </a>    {
+<a class="br" href="#L300" id="L300">300 </a>        ~<span class="kwrd">this</span>() <span class="kwrd">nothrow</span> @<span class="hid">nogc</span> { <span class="hid">refs</span>--; }
+<a class="br" href="#L301" id="L301">301 </a>    }
+<a class="br" href="#L302" id="L302">302 </a>
+<a class="br" href="#L303" id="L303">303 </a>    <span class="kwrd">struct</span> <span class="hid">Bar</span>
+<a class="br" href="#L304" id="L304">304 </a>    {
+<a class="br" href="#L305" id="L305">305 </a>        <span class="type">int</span> <span class="hid">baz</span>;
+<a class="br" href="#L306" id="L306">306 </a>        <span class="kwrd">this</span>(<span class="type">int</span> <span class="hid">i</span>) <span class="kwrd">nothrow</span> @<span class="hid">nogc</span> { <span class="hid">baz</span> = <span class="hid">i</span>; }
+<a class="br" href="#L307" id="L307">307 </a>        ~<span class="kwrd">this</span>() <span class="kwrd">nothrow</span> @<span class="hid">nogc</span> { <span class="hid">refs</span>--; }
+<a class="br" href="#L308" id="L308">308 </a>    }
+<a class="br" href="#L309" id="L309">309 </a>
+<a class="br" href="#L310" id="L310">310 </a>    <span class="kwrd">auto</span> <span class="hid">pool</span> = <a class="hid" href="mempooled.fixed.d.html#L18" title="mempooled.fixed.fixedPool">fixedPool</a>!(<span class="num">100</span>, <span class="num">1</span>);
+<a class="br" href="#L311" id="L311">311 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.capacity</span> == <span class="num">1</span>);
+<a class="br" href="#L312" id="L312">312 </a>    <span class="kwrd">auto</span> <span class="hid">f</span> = <span class="hid">pool.alloc</span>!(<span class="hid">Foo</span>);
+<a class="br" href="#L313" id="L313">313 </a>    <span class="hid">refs</span>++;
+<a class="br" href="#L314" id="L314">314 </a>    <span class="hid">pool.dealloc</span>(<span class="hid">f</span>);
+<a class="br" href="#L315" id="L315">315 </a>    <span class="hid">f</span> = <span class="kwrd">null</span>;
+<a class="br" href="#L316" id="L316">316 </a>    <span class="kwrd">assert</span>(<span class="hid">refs</span> == <span class="num">0</span>);
+<a class="br" href="#L317" id="L317">317 </a>
+<a class="br" href="#L318" id="L318">318 </a>    <span class="kwrd">auto</span> <span class="hid">b</span> = <span class="hid">pool.alloc</span>!<span class="hid">Bar</span>(<span class="num">42</span>);
+<a class="br" href="#L319" id="L319">319 </a>    <span class="hid">refs</span>++;
+<a class="br" href="#L320" id="L320">320 </a>    <span class="kwrd">assert</span>(<span class="hid">b.baz</span> == <span class="num">42</span>);
+<a class="br" href="#L321" id="L321">321 </a>    <span class="hid">pool.dealloc</span>(<span class="hid">b</span>);
+<a class="br" href="#L322" id="L322">322 </a>    <span class="hid">b</span> = <span class="kwrd">null</span>;
+<a class="br" href="#L323" id="L323">323 </a>    <span class="kwrd">assert</span>(<span class="hid">refs</span> == <span class="num">0</span>);
+<a class="br" href="#L324" id="L324">324 </a>
+<a class="br" href="#L325" id="L325">325 </a>    <span class="kwrd">auto</span> <span class="hid">x</span> = <span class="hid">pool.alloc</span>!<span class="type">int</span>();
+<a class="br" href="#L326" id="L326">326 </a>    <span class="kwrd">assert</span>(<span class="hid">x</span> !<span class="kwrd">is</span> <span class="kwrd">null</span>);
+<a class="br" href="#L327" id="L327">327 </a>    <span class="kwrd">auto</span> <span class="hid">y</span> = <span class="hid">pool.alloc</span>!<span class="type">int</span>();
+<a class="br" href="#L328" id="L328">328 </a>    <span class="kwrd">assert</span>(<span class="hid">y</span> <span class="kwrd">is</span> <span class="kwrd">null</span>);
+<a class="br" href="#L329" id="L329">329 </a>}
+<a class="br" href="#L330" id="L330">330 </a>
+<a class="br" href="#L331" id="L331">331 </a>@(<span class="str">&quot;copy&quot;</span>)
+<a class="br" href="#L332" id="L332">332 </a><span class="kwrd">unittest</span>
+<a class="br" href="#L333" id="L333">333 </a>{
+<a class="br" href="#L334" id="L334">334 </a>    <span class="kwrd">auto</span> <span class="hid">pool</span> = <a class="hid" href="mempooled.fixed.d.html#L18" title="mempooled.fixed.fixedPool">fixedPool</a>!(<span class="type">int</span>, <span class="num">10</span>);
+<a class="br" href="#L335" id="L335">335 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.pay.refs</span> == <span class="num">1</span>);
+<a class="br" href="#L336" id="L336">336 </a>    <span class="kwrd">auto</span> <span class="hid">pool2</span> = <span class="hid">pool</span>;
+<a class="br" href="#L337" id="L337">337 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.pay.refs</span> == <span class="num">2</span>);
+<a class="br" href="#L338" id="L338">338 </a>    <span class="kwrd">assert</span>(<span class="hid">pool.pay</span> <span class="kwrd">is</span> <span class="hid">pool2.pay</span>);
+<a class="br" href="#L339" id="L339">339 </a>}</pre></div>
+		<div id="page-nav">
+		<div id="source-navigation"><div class="list-holder"><ul><li><a class="docs" href="../mempooled.fixed.html">[Docs] </a><a href="#L1">mempooled.fixed</a><ul><li><a href="#L3">core.stdc.stdio</a></li><li><a href="#L4">core.stdc.stdlib</a></li><li><a href="#L5">std.conv</a></li><li><a class="docs" href="../mempooled.fixed.fixedPool.1.html">[Docs] </a><a href="#L18">fixedPool</a></li><li><a class="docs" href="../mempooled.fixed.fixedPool.2.html">[Docs] </a><a href="#L26">fixedPool</a></li><li><a class="docs" href="../mempooled.fixed.FixedPool.html">[Docs] </a><a href="#L52">FixedPool</a><ul><li><a href="#L64">Payload</a><ul><li><a href="#L68">memStart</a></li><li><a href="#L69">next</a></li><li><a href="#L70">numFreeBlocks</a></li><li><a href="#L71">numInitialized</a></li><li><a href="#L72">refs</a></li><li><a href="#L73">ownPool</a></li><li><a href="#L75">initialize</a></li><li><a href="#L91">~this</a></li></ul></li><li><a href="#L98">pay</a></li><li><a class="docs" href="../mempooled.fixed.FixedPool.this.html">[Docs] </a><a href="#L102">this</a></li><li><a href="#L113">~this</a></li><li><a href="#L128">capacity</a></li><li><a href="#L136">alloc</a></li><li><a href="#L144">dealloc</a></li><li><a href="#L151">alloc</a></li><li><a href="#L158">dealloc</a></li><li><a href="#L166">initPool</a></li><li><a href="#L175">allocImpl</a></li><li><a href="#L197">deallocImpl</a></li><li><a href="#L220">addrFromIdx</a></li><li><a href="#L226">idxFromAddr</a></li></ul></li></ul></li></ul></div></div></div>
+	</div>
+	<div id="page-footer">Page generated by <a href="https://github.com/adamdruppe/adrdox">adrdox</a></div>
+</body>
+</html>
