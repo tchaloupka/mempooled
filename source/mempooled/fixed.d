@@ -42,6 +42,8 @@ auto fixedPool(size_t blockSize, size_t numBlocks)(ubyte[] buffer = null)
  *
  * Minimal block size is 4B as data in blocks are used internally to form a linked list of the blocks.
  *
+ * Internally it uses refcounted payload so can be copied around as needed.
+ *
  * Params:
  *      blockSize = size of one item block in a pool
  *      numBlock = number of blocks in a pool
@@ -110,6 +112,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         }
     }
 
+    /// Destructor
     ~this()
     {
         if (pay)
@@ -125,6 +128,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         }
     }
 
+    /// Available number of items / blocks that can be allocated
     size_t capacity() const
     {
         if (pay is null) return numBlocks;
@@ -133,6 +137,14 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
 
     static if (is(T == void)) // allow to allocate anything that fits
     {
+        /**
+         * Allocates item of requested type from the pool.
+         *
+         * Size of the requested item type must be less or equal to the pool block size.
+         *
+         * Params: args = optional args to be used to initialize item
+         * Returns: pointer to the allocated item or `null` if the pool is already depleted.
+         */
         U* alloc(U, ARGS...)(ARGS args)
         {
             static assert(U.sizeof <= blockSize, format!"Can't allocate %s of size %s with blockSize=%s"(U, U.sizeof, blockSize));
@@ -141,6 +153,13 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
             return null;
         }
 
+        /**
+         * Returns previously allocated item back to the pool.
+         *
+         * If the item type has a destructor it is called.
+         *
+         * Params: p = allocated item pointer
+         */
         void dealloc(U)(U* p)
         {
             deallocImpl(p);
@@ -148,6 +167,12 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
     }
     else
     {
+        /**
+         * Allocates item from the pool.
+         *
+         * Params: args = optional args to be used to initialize item
+         * Returns: pointer to the allocated item or `null` if the pool is already depleted.
+         */
         T* alloc(ARGS...)(ARGS args)
         {
             void* p = allocImpl();
@@ -155,6 +180,13 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
             return null;
         }
 
+        /**
+         * Returns previously allocated item back to the pool.
+         *
+         * If the item type has a destructor it is called.
+         *
+         * Params: p = allocated item pointer
+         */
         void dealloc(T* p)
         {
             deallocImpl(p);
