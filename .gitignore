@@ -1,1 +1,4 @@
 mempooled-*
+*.o
+*.a
+*.lib

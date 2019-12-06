@@ -1,4 +1,4 @@
-module mempool.fixed;
+module mempooled.fixed;
 
 debug import core.stdc.stdio;
 import core.stdc.stdlib;
@@ -6,21 +6,46 @@ import std.conv : emplace;
 
 nothrow @nogc:
 
-/// create instance of `FixedPool`
-auto fixedPool(T, size_t size)()
+/**
+ * Create instance of `FixedPool`
+ *
+ * Params:
+ *      T = type of the pooled item
+ *      blockSize = size of one block in a pool
+ *      size = number of items
+ *      buffer = optional buffer to initiate `FixedPool` over
+ */
+auto fixedPool(T, size_t size)(ubyte[] buffer = null)
 {
-    return FixedPool!(T.sizeof, size, T)();
+    auto res = FixedPool!(T.sizeof, size, T)();
+    res.initPool(buffer);
+    return res;
 }
 
 /// ditto
-auto fixedPool(size_t blockSize, size_t numBlocks)()
+auto fixedPool(size_t blockSize, size_t numBlocks)(ubyte[] buffer = null)
 {
-    return FixedPool!(blockSize, numBlocks, void)();
+    auto res = FixedPool!(blockSize, numBlocks, void)();
+    res.initPool(buffer);
+    return res;
 }
 
 /**
  * Implementation of "Fast Efficient Fixed-Size Memory Pool" as described in this article:
  * www.thinkmind.org/download.php?articleid=computation_tools_2012_1_10_80006
+ *
+ * Implementation of "Fast Efficient Fixed-Size Memory Pool" as described in
+ * [this](www.thinkmind.org/download.php?articleid=computation_tools_2012_1_10_80006) article.
+ *
+ * It can work as a pool for single templated type or generic pool with a fixed block size (so one
+ * can `alloc` various types with size less or equal to the block size).
+ *
+ * Minimal block size is 4B as data in blocks are used internally to form a linked list of the blocks.
+ *
+ * Params:
+ *      blockSize = size of one item block in a pool
+ *      numBlock = number of blocks in a pool
+ *      T = optional forced type of pooled items - if used, pool is forced to provide items of this type only
  *
  * See_Also: implementation here: https://github.com/green-anger/MemoryPool
  */
@@ -38,16 +63,26 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
     {
         struct Payload
         {
-            ubyte* memStart;       // Beginning of memory pool
-            ubyte* next;           // Num of next free block
-            uint numFreeBlocks;    // Num of remaining blocks
-            uint numInitialized;   // Num of initialized blocks
-            size_t refs;            // number of references
+            nothrow @nogc:
 
-            void initialize()
+            ubyte* memStart;        // Beginning of memory pool
+            ubyte* next;            // Num of next free block
+            uint numFreeBlocks;     // Num of remaining blocks
+            uint numInitialized;    // Num of initialized blocks
+            size_t refs;            // Number of references
+            bool ownPool;           // Is memory block allocated by us?
+
+            void initialize(ubyte[] buffer)
             {
-                memStart = cast(ubyte*)calloc(numBlocks, blockSize);
-                assert(memStart, "failed to allocate pool");
+                assert(buffer is null || buffer.length == numBlocks * blockSize, "Provided buffer has wrong size, must be numBlocks*blockSize");
+                if (buffer) memStart = &buffer[0];
+                else
+                {
+                    memStart = cast(ubyte*)calloc(numBlocks, blockSize);
+                    assert(memStart, "failed to allocate pool");
+                    ownPool = true;
+                }
+
                 next = memStart;
                 numFreeBlocks = numBlocks;
                 refs = 1;
@@ -55,7 +90,8 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
 
             ~this()
             {
-                free(memStart);
+                assert(memStart, "memStart is null");
+                if (ownPool) free(memStart);
             }
         }
 
@@ -127,13 +163,13 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
 
     private:
 
-    void initPool()
+    void initPool(ubyte[] buffer = null)
     {
         assert(pay is null);
         // debug printf("init\n");
         pay = cast(Payload*)malloc(Payload.sizeof);
         emplace(pay);
-        pay.initialize();
+        pay.initialize(buffer);
     }
 
     void* allocImpl()
@@ -271,8 +307,8 @@ unittest
         ~this() nothrow @nogc { refs--; }
     }
 
-    auto pool = fixedPool!(100, 10);
-    assert(pool.capacity == 10);
+    auto pool = fixedPool!(100, 1);
+    assert(pool.capacity == 1);
     auto f = pool.alloc!(Foo);
     refs++;
     pool.dealloc(f);
@@ -285,4 +321,19 @@ unittest
     pool.dealloc(b);
     b = null;
     assert(refs == 0);
+
+    auto x = pool.alloc!int();
+    assert(x !is null);
+    auto y = pool.alloc!int();
+    assert(y is null);
+}
+
+@("copy")
+unittest
+{
+    auto pool = fixedPool!(int, 10);
+    assert(pool.pay.refs == 1);
+    auto pool2 = pool;
+    assert(pool.pay.refs == 2);
+    assert(pool.pay is pool2.pay);
 }
