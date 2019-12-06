@@ -337,3 +337,12 @@ unittest
     assert(pool.pay.refs == 2);
     assert(pool.pay is pool2.pay);
 }
+
+@("custom buffer")
+unittest
+{
+    auto buf = (cast(ubyte*)malloc(int.sizeof * 1024))[0..1024*int.sizeof];
+    auto pool = fixedPool!(int, 1024)(buf);
+    auto i = pool.alloc();
+    assert(cast(ubyte*)i == &buf[0]);
+}
