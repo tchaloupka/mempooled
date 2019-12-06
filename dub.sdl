@@ -1,0 +1,6 @@
+name "mempooled"
+description "Mempool implementation for dlang"
+authors "Tomáš Chaloupka"
+license "BSL-1.0"
+copyright "Copyright © 2019, Tomáš Chaloupka"
+targetType "library"
