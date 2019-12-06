@@ -14,7 +14,7 @@ Fast efficient memory pools implementation supporting `@nogc` and `betterC`.
 
 ## fixedpool
 
-Implementation of "Fast Efficient Fixed-Size Memory Pool" as described in [this](www.thinkmind.org/download.php?articleid=computation_tools_2012_1_10_80006) article.
+Implementation of "Fast Efficient Fixed-Size Memory Pool" as described in [this](http://www.thinkmind.org/download.php?articleid=computation_tools_2012_1_10_80006) article.
 
 It can work as a pool for single templated type or generic pool with a fixed block size (so one can `alloc` various types with size less or equal to the block size - note however that space can be used inefficiently as one pool block can hold only one such item).
 
