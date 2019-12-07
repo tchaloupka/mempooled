@@ -175,7 +175,7 @@
 <a class="br" href="#L147" id="L147">147 </a>         */</span>
 <a class="br" href="#L148" id="L148">148 </a>        <span class="hid">U</span>* <span class="hid">alloc</span>(<span class="hid">U</span>, <span class="hid">ARGS</span>...)(<span class="hid">ARGS</span> <span class="hid">args</span>)
 <a class="br" href="#L149" id="L149">149 </a>        {
-<a class="br" href="#L150" id="L150">150 </a>            <span class="kwrd">pragma</span>(<span class="hid">inline</span>, <span class="kwrd">true</span>)
+<a class="br" href="#L150" id="L150">150 </a>            <span class="kwrd">pragma</span>(<span class="hid">inline</span>)
 <a class="br" href="#L151" id="L151">151 </a>            <span class="kwrd">static</span> <span class="kwrd">assert</span>(<span class="hid">U.sizeof</span> &lt;= <span class="hid">blockSize</span>, <span class="hid">format</span>!<span class="str">&quot;Can't allocate %s of size %s with blockSize=%s&quot;</span>(<span class="hid">U</span>, <span class="hid">U.sizeof</span>, <span class="hid">blockSize</span>));
 <a class="br" href="#L152" id="L152">152 </a>            <span class="type">void</span>* <span class="hid">p</span> = <span class="hid">allocImpl</span>();
 <a class="br" href="#L153" id="L153">153 </a>            <span class="kwrd">if</span> (<span class="hid">p</span>) <span class="kwrd">return</span> <span class="hid">emplace</span>(<span class="kwrd">cast</span>(<span class="hid">U</span>*)<span class="hid">p</span>, <span class="hid">args</span>);
@@ -205,7 +205,7 @@
 <a class="br" href="#L177" id="L177">177 </a>         */</span>
 <a class="br" href="#L178" id="L178">178 </a>        <span class="hid">T</span>* <span class="hid">alloc</span>(<span class="hid">ARGS</span>...)(<span class="hid">ARGS</span> <span class="hid">args</span>)
 <a class="br" href="#L179" id="L179">179 </a>        {
-<a class="br" href="#L180" id="L180">180 </a>            <span class="kwrd">pragma</span>(<span class="hid">inline</span>, <span class="kwrd">true</span>)
+<a class="br" href="#L180" id="L180">180 </a>            <span class="kwrd">pragma</span>(<span class="hid">inline</span>)
 <a class="br" href="#L181" id="L181">181 </a>            <span class="type">void</span>* <span class="hid">p</span> = <span class="hid">allocImpl</span>();
 <a class="br" href="#L182" id="L182">182 </a>            <span class="kwrd">if</span> (<span class="hid">p</span>) <span class="kwrd">return</span> <span class="hid">emplace</span>(<span class="kwrd">cast</span>(<span class="hid">T</span>*)<span class="hid">p</span>, <span class="hid">args</span>);
 <a class="br" href="#L183" id="L183">183 </a>            <span class="kwrd">return</span> <span class="kwrd">null</span>;
