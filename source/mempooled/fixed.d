@@ -147,7 +147,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
          */
         U* alloc(U, ARGS...)(ARGS args)
         {
-            pragma(inline, true)
+            pragma(inline)
             static assert(U.sizeof <= blockSize, format!"Can't allocate %s of size %s with blockSize=%s"(U, U.sizeof, blockSize));
             void* p = allocImpl();
             if (p) return emplace(cast(U*)p, args);
@@ -177,7 +177,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
          */
         T* alloc(ARGS...)(ARGS args)
         {
-            pragma(inline, true)
+            pragma(inline)
             void* p = allocImpl();
             if (p) return emplace(cast(T*)p, args);
             return null;
