@@ -147,6 +147,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
          */
         U* alloc(U, ARGS...)(ARGS args)
         {
+            pragma(inline, true)
             static assert(U.sizeof <= blockSize, format!"Can't allocate %s of size %s with blockSize=%s"(U, U.sizeof, blockSize));
             void* p = allocImpl();
             if (p) return emplace(cast(U*)p, args);
@@ -162,6 +163,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
          */
         void dealloc(U)(U* p)
         {
+            pragma(inline, true)
             deallocImpl(p);
         }
     }
@@ -175,6 +177,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
          */
         T* alloc(ARGS...)(ARGS args)
         {
+            pragma(inline, true)
             void* p = allocImpl();
             if (p) return emplace(cast(T*)p, args);
             return null;
@@ -189,6 +192,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
          */
         void dealloc(T* p)
         {
+            pragma(inline, true)
             deallocImpl(p);
         }
     }
@@ -211,7 +215,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         // make sure that list of unused blocks is correct when allocating
         if (pay.numInitialized < numBlocks)
         {
-            uint* p = cast(uint*)addrFromIdx(pay.numInitialized);
+            uint* p = cast(uint*)addrFromIdx(pay.memStart, pay.numInitialized);
             *p = ++pay.numInitialized;
         }
 
@@ -220,7 +224,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         {
             ret = cast(void*)pay.next;
             if (--pay.numFreeBlocks != 0)
-                pay.next = addrFromIdx(*(cast(uint*)pay.next));
+                pay.next = addrFromIdx(pay.memStart, *(cast(uint*)pay.next));
             else pay.next = null;
         }
         return ret;
@@ -229,7 +233,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
     void deallocImpl(U)(U* p)
     {
         assert(
-            cast(ubyte*)p >= pay.memStart  && cast(ubyte*)p < (pay.memStart + numBlocks*blockSize),
+            cast(ubyte*)p >= pay.memStart && cast(ubyte*)p < (pay.memStart + numBlocks*blockSize),
             "Out of bounds"
         );
         assert((cast(ubyte*)p - pay.memStart) % blockSize == 0, "Invalid item memory offset");
@@ -240,7 +244,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
 
         // store index of prev next to newly returned item
         if (pay.next !is null)
-            *(cast(uint*)p) = idxFromAddr(pay.next);
+            *(cast(uint*)p) = idxFromAddr(pay.memStart, pay.next);
         else
             *(cast(uint*)p) = numBlocks;
 
@@ -249,16 +253,16 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         ++pay.numFreeBlocks;
     }
 
-    ubyte* addrFromIdx(uint i) const
+    static ubyte* addrFromIdx(const ubyte* mstart, uint i) pure
     {
-        pragma(inline)
-        return cast(ubyte*)(pay.memStart + ( i * blockSize));
+        pragma(inline, true)
+        return cast(ubyte*)(mstart + ( i * blockSize));
     }
 
-    uint idxFromAddr(const ubyte* p) const
+    static uint idxFromAddr(const ubyte* mstart, const ubyte* p) pure
     {
-        pragma(inline)
-        return ((cast(uint)(p - pay.memStart)) / blockSize);
+        pragma(inline, true)
+        return ((cast(uint)(p - mstart)) / blockSize);
     }
 }
 
