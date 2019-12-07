@@ -58,3 +58,23 @@ pool.dealloc(b);
 ## How to use the lib
 
 Add it as a dependency to your `dub` project type or just copy the source code to your project.
+
+## Speed comparison
+
+Tested with `dub -b release --compiler=ldc2`
+
+For benchmark source code check `benchmark` subfolder.
+
+```
+Alloc
+-----
+fixedPool: 234 ms, 710 μs, and 5 hnsecs
+GC:        831 ms, 890 μs, and 3 hnsecs
+malloc:    448 ms, 686 μs, and 7 hnsecs
+
+Dealloc
+-------
+fixedPool: 46 ms, 6 μs, and 1 hnsec
+GC:        40 ms, 240 μs, and 1 hnsec
+malloc:    75 ms, 354 μs, and 4 hnsecs
+```
