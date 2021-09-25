@@ -5,7 +5,7 @@ BUILD_FLAGS = -debug -g -w -vcolumns
 TEST_FLAGS = $(BUILD_FLAGS) -unittest
 
 ifeq ($(DC),ldc2)
-	DC=ldmd2
+    DC=ldmd2
 endif
 
 all: build

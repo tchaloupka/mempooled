@@ -2,7 +2,7 @@
 
 [![Latest version](https://img.shields.io/dub/v/mempooled.svg)](https://code.dlang.org/packages/mempooled)
 [![Dub downloads](https://img.shields.io/dub/dt/mempooled.svg)](http://code.dlang.org/packages/mempooled)
-[![Build status](https://img.shields.io/travis/tchaloupka/mempooled/master.svg?logo=travis&label=Travis%20CI)](https://travis-ci.org/tchaloupka/mempooled)
+[![Actions Status](https://github.com/tchaloupka/mempooled/workflows/ci/badge.svg)](https://github.com/tchaloupka/mempooled/actions)
 [![codecov](https://codecov.io/gh/tchaloupka/mempooled/branch/master/graph/badge.svg)](https://codecov.io/gh/tchaloupka/mempooled)
 [![license](https://img.shields.io/github/license/tchaloupka/mempooled.svg)](https://github.com/tchaloupka/mempooled/blob/master/LICENSE)
 

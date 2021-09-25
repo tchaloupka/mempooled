@@ -4,3 +4,15 @@ authors "Tomáš Chaloupka"
 license "BSL-1.0"
 copyright "Copyright © 2019, Tomáš Chaloupka"
 targetType "library"
+
+configuration "default" {
+}
+
+configuration "betterC" {
+    buildOptions "betterC"
+}
+
+configuration "mempooled-test-betterC" {
+    targetType "executable"
+    buildOptions "betterC"
+}
