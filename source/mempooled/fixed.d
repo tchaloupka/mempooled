@@ -1,8 +1,8 @@
 module mempooled.fixed;
 
 debug import core.stdc.stdio;
-import core.stdc.stdlib;
-import std.conv : emplace;
+import core.memory : pureMalloc, pureCalloc, pureFree;
+import core.lifetime : emplace;
 
 nothrow @nogc:
 
@@ -58,14 +58,14 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
     static assert(blockSize >= 4, "blockSize must be equal or greater than uint.sizeof");
     static if (!is(T == void))
     {
-        static assert(T.sizeof == blockSize, "Blocksize must be the same as used T.sizeof");
+        static assert(T.sizeof <= blockSize, "Blocksize must be greater or equal to T.sizeof");
     }
 
     private
     {
         struct Payload
         {
-            nothrow @nogc:
+            nothrow @nogc @safe pure:
 
             ubyte* memStart;        // Beginning of memory pool
             ubyte* next;            // Num of next free block
@@ -76,12 +76,13 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
 
             void initialize(ubyte[] buffer)
             {
+                import core.exception : onOutOfMemoryError;
                 assert(buffer is null || buffer.length == numBlocks * blockSize, "Provided buffer has wrong size, must be numBlocks*blockSize");
                 if (buffer) memStart = &buffer[0];
                 else
                 {
-                    memStart = cast(ubyte*)calloc(numBlocks, blockSize);
-                    assert(memStart, "failed to allocate pool");
+                    memStart = () @trusted { return cast(ubyte*)pureCalloc(numBlocks, blockSize); }();
+                    if (!memStart) onOutOfMemoryError();
                     ownPool = true;
                 }
 
@@ -93,7 +94,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
             ~this()
             {
                 assert(memStart, "memStart is null");
-                if (ownPool) free(memStart);
+                if (ownPool) () @trusted { pureFree(memStart); }();
             }
         }
 
@@ -101,7 +102,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
     }
 
     /// Copy constructor
-    this(ref return scope typeof(this) rhs)
+    this(ref return scope typeof(this) rhs) pure @safe
     {
         // debug printf("copy\n");
         if (rhs.pay is null) initPool();
@@ -113,8 +114,9 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
     }
 
     /// Destructor
-    ~this()
+    ~this() pure @safe
     {
+        import std.traits : hasElaborateDestructor;
         if (pay)
         {
             pay.refs--;
@@ -122,14 +124,17 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
             if (pay.refs == 0)
             {
                 // debug printf("free\n");
+                static if (is(T == void) || hasElaborateDestructor!T) {
+                    assert(pay.numFreeBlocks == numBlocks, "Possibly not disposed allocations left in pool");
+                }
                 destroy(*pay); // call payload destructor
-                free(pay);
+                () @trusted { pureFree(pay); } ();
             }
         }
     }
 
     /// Available number of items / blocks that can be allocated
-    size_t capacity() const
+    size_t capacity() const pure @safe
     {
         if (pay is null) return numBlocks;
         return pay.numFreeBlocks;
@@ -150,7 +155,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
             pragma(inline)
             static assert(U.sizeof <= blockSize, format!"Can't allocate %s of size %s with blockSize=%s"(U, U.sizeof, blockSize));
             void* p = allocImpl();
-            if (p) return emplace(cast(U*)p, args);
+            if (p) return emplace(() @trusted { return cast(U*)p; }(), args);
             return null;
         }
 
@@ -179,7 +184,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         {
             pragma(inline)
             void* p = allocImpl();
-            if (p) return emplace(cast(T*)p, args);
+            if (p) return emplace(() @trusted { return cast(T*)p; }(), args);
             return null;
         }
 
@@ -199,23 +204,26 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
 
     private:
 
-    void initPool(ubyte[] buffer = null)
+    void initPool(ubyte[] buffer = null) pure @safe
     {
+        import core.exception : onOutOfMemoryError;
+
         assert(pay is null);
         // debug printf("init\n");
-        pay = cast(Payload*)malloc(Payload.sizeof);
+        pay = () @trusted { return cast(Payload*)pureMalloc(Payload.sizeof); }();
+        if (!pay) onOutOfMemoryError();
         emplace(pay);
         pay.initialize(buffer);
     }
 
-    void* allocImpl()
+    void* allocImpl() pure @safe
     {
         if (pay is null) initPool();
 
         // make sure that list of unused blocks is correct when allocating
         if (pay.numInitialized < numBlocks)
         {
-            uint* p = cast(uint*)addrFromIdx(pay.memStart, pay.numInitialized);
+            uint* p = () @trusted { return cast(uint*)addrFromIdx(pay.memStart, pay.numInitialized); }();
             *p = ++pay.numInitialized;
         }
 
@@ -224,42 +232,48 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         {
             ret = cast(void*)pay.next;
             if (--pay.numFreeBlocks != 0)
-                pay.next = addrFromIdx(pay.memStart, *(cast(uint*)pay.next));
+                pay.next = addrFromIdx(pay.memStart, () @trusted { return *(cast(uint*)pay.next); }());
             else pay.next = null;
         }
         return ret;
     }
 
-    void deallocImpl(U)(U* p)
+    void deallocImpl(U)(U* p) @safe
     {
-        assert(
-            cast(ubyte*)p >= pay.memStart && cast(ubyte*)p < (pay.memStart + numBlocks*blockSize),
-            "Out of bounds"
-        );
-        assert((cast(ubyte*)p - pay.memStart) % blockSize == 0, "Invalid item memory offset");
+        assert(pay, "dealloc called on uninitialized pool");
+        assert(p, "Null pointer");
+
+        () @trusted {
+            assert(
+                cast(ubyte*)p >= pay.memStart && cast(ubyte*)p < (pay.memStart + numBlocks*blockSize),
+                "Pointer out of bounds"
+            );
+            assert((cast(ubyte*)p - pay.memStart) % blockSize == 0, "Invalid item memory offset");
+        }();
 
         import std.traits : hasElaborateDestructor;
         static if (hasElaborateDestructor!U)
             destroy(*p); // call possible destructors
 
         // store index of prev next to newly returned item
+        uint* nip = () @trusted { return cast(uint*)p; }();
         if (pay.next !is null)
-            *(cast(uint*)p) = idxFromAddr(pay.memStart, pay.next);
+            *nip = idxFromAddr(pay.memStart, pay.next);
         else
-            *(cast(uint*)p) = numBlocks;
+            *nip = numBlocks;
 
         // and use returned item as next free one
-        pay.next = cast(ubyte*)p;
+        pay.next = () @trusted { return cast(ubyte*)p; }();
         ++pay.numFreeBlocks;
     }
 
-    static ubyte* addrFromIdx(const ubyte* mstart, uint i) pure
+    static ubyte* addrFromIdx(const ubyte* mstart, uint i) pure @trusted
     {
         pragma(inline, true)
         return cast(ubyte*)(mstart + ( i * blockSize));
     }
 
-    static uint idxFromAddr(const ubyte* mstart, const ubyte* p) pure
+    static uint idxFromAddr(const ubyte* mstart, const ubyte* p) pure @trusted
     {
         pragma(inline, true)
         return ((cast(uint)(p - mstart)) / blockSize);
@@ -267,7 +281,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
 }
 
 @("internal implementation test")
-unittest
+@safe unittest
 {
     auto pool = fixedPool!(int, 10);
     foreach (i; 0..10)
@@ -279,7 +293,7 @@ unittest
     assert(pool.capacity == 0);
     assert(pool.pay.next is null);
 
-    pool.dealloc(cast(int*)pool.pay.memStart); // dealocate first
+    pool.dealloc(() @trusted { return cast(int*)pool.pay.memStart; }()); // dealocate first
     assert(pool.capacity == 1);
     assert(pool.pay.next == pool.pay.memStart);
 
@@ -287,20 +301,20 @@ unittest
     assert(pool.capacity == 0);
     assert(pool.pay.next is null);
 
-    pool.dealloc(cast(int*)pool.pay.memStart); // dealocate it back
-    pool.dealloc(cast(int*)(pool.pay.memStart + int.sizeof*9)); // deallocate last one
+    pool.dealloc(() @trusted { return cast(int*)pool.pay.memStart; }()); // dealocate it back
+    pool.dealloc(() @trusted { return cast(int*)(pool.pay.memStart + int.sizeof*9); }()); // deallocate last one
     auto p = pool.alloc;
     assert(pool.pay.next == pool.pay.memStart);
-    assert(cast(ubyte*)p == pool.pay.memStart + int.sizeof*9);
+    assert(cast(ubyte*)p == () @trusted { return pool.pay.memStart + int.sizeof*9; }());
 }
 
 @("payload destructor")
-unittest
+@safe unittest
 {
     static int refs;
     struct Foo
     {
-        ~this() nothrow @nogc { refs--; }
+        ~this() nothrow @nogc @safe { refs--; }
     }
 
     auto pool = fixedPool!(Foo, 10);
@@ -314,7 +328,7 @@ unittest
 }
 
 @("capacity")
-unittest
+@safe unittest
 {
     auto pool = fixedPool!(int, 10);
     assert(pool.capacity == 10);
@@ -328,19 +342,19 @@ unittest
 }
 
 @("untyped")
-unittest
+@safe unittest
 {
     static int refs;
     struct Foo
     {
-        ~this() nothrow @nogc { refs--; }
+        ~this() nothrow @nogc @safe { refs--; }
     }
 
     struct Bar
     {
         int baz;
-        this(int i) nothrow @nogc { baz = i; }
-        ~this() nothrow @nogc { refs--; }
+        this(int i) nothrow @nogc @safe { baz = i; }
+        ~this() nothrow @nogc @safe { refs--; }
     }
 
     auto pool = fixedPool!(100, 1);
@@ -362,10 +376,11 @@ unittest
     assert(x !is null);
     auto y = pool.alloc!int();
     assert(y is null);
+    pool.dealloc(x);
 }
 
 @("copy")
-unittest
+@safe unittest
 {
     auto pool = fixedPool!(int, 10);
     assert(pool.pay.refs == 1);
@@ -375,9 +390,9 @@ unittest
 }
 
 @("custom buffer")
-unittest
+@safe unittest
 {
-    auto buf = (cast(ubyte*)malloc(int.sizeof * 1024))[0..1024*int.sizeof];
+    auto buf = () @trusted { return (cast(ubyte*)pureMalloc(int.sizeof * 1024))[0..1024*int.sizeof]; }();
     auto pool = fixedPool!(int, 1024)(buf);
     auto i = pool.alloc();
     assert(cast(ubyte*)i == &buf[0]);
