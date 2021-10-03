@@ -218,6 +218,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
 
     void* allocImpl() pure @safe
     {
+        pragma(inline, true);
         if (pay is null) initPool();
 
         // make sure that list of unused blocks is correct when allocating
@@ -240,6 +241,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
 
     void deallocImpl(U)(U* p) @safe
     {
+        pragma(inline, true);
         assert(pay, "dealloc called on uninitialized pool");
         assert(p, "Null pointer");
 
