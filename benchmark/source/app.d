@@ -8,7 +8,7 @@ import std.stdio;
 struct Foo
 {
     long[4] f;
-    ~this() nothrow @nogc {}
+    ~this() @safe nothrow @nogc {}
 }
 
 static assert(Foo.sizeof == 32);

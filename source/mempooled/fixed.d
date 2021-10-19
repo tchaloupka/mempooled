@@ -3,6 +3,7 @@ module mempooled.fixed;
 debug import core.stdc.stdio;
 import core.memory : pureMalloc, pureCalloc, pureFree;
 import core.lifetime : emplace;
+import mempooled.intrinsics;
 
 nothrow @nogc:
 
@@ -31,9 +32,6 @@ auto fixedPool(size_t blockSize, size_t numBlocks)(ubyte[] buffer = null)
 }
 
 /**
- * Implementation of "Fast Efficient Fixed-Size Memory Pool" as described in this article:
- * www.thinkmind.org/download.php?articleid=computation_tools_2012_1_10_80006
- *
  * Implementation of "Fast Efficient Fixed-Size Memory Pool" as described in
  * [this](www.thinkmind.org/download.php?articleid=computation_tools_2012_1_10_80006) article.
  *
@@ -136,7 +134,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
     /// Available number of items / blocks that can be allocated
     size_t capacity() const pure @safe
     {
-        if (pay is null) return numBlocks;
+        if (_expect(pay is null, false)) return numBlocks;
         return pay.numFreeBlocks;
     }
 
@@ -152,11 +150,17 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
          */
         U* alloc(U, ARGS...)(ARGS args)
         {
-            pragma(inline)
             static assert(U.sizeof <= blockSize, format!"Can't allocate %s of size %s with blockSize=%s"(U, U.sizeof, blockSize));
-            void* p = allocImpl();
-            if (p) return emplace(() @trusted { return cast(U*)p; }(), args);
-            return null;
+            return allocImpl!(U, true)(args);
+        }
+
+        /**
+         * Similar to `alloc` but doesn't initialize the allocated value.
+         */
+        U* allocVoid(U)()
+        {
+            static assert(U.sizeof <= blockSize, format!"Can't allocate %s of size %s with blockSize=%s"(U, U.sizeof, blockSize));
+            return allocImpl!(U, false)();
         }
 
         /**
@@ -183,9 +187,16 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         T* alloc(ARGS...)(ARGS args)
         {
             pragma(inline)
-            void* p = allocImpl();
-            if (p) return emplace(() @trusted { return cast(T*)p; }(), args);
-            return null;
+            return allocImpl!(T, true)(args);
+        }
+
+        /**
+         * Similar to `alloc` but doesn't initialize the allocated value.
+         */
+        T* allocVoid()
+        {
+            pragma(inline)
+            return allocImpl!(T, false)();
         }
 
         /**
@@ -216,10 +227,11 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         pay.initialize(buffer);
     }
 
-    void* allocImpl() pure @safe
+    U* allocImpl(U, bool initialize = true, ARGS...)(ARGS args)
     {
         pragma(inline, true);
-        if (pay is null) initPool();
+        static assert(initialize || ARGS.length == 0);
+        if (_expect(pay is null, false)) initPool();
 
         // make sure that list of unused blocks is correct when allocating
         if (pay.numInitialized < numBlocks)
@@ -228,18 +240,19 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
             *p = ++pay.numInitialized;
         }
 
-        void* ret;
-        if (pay.numFreeBlocks > 0)
+        if (_expect(pay.numFreeBlocks > 0, true))
         {
-            ret = cast(void*)pay.next;
-            if (--pay.numFreeBlocks != 0)
+            U* ret = () @trusted { return cast(U*)pay.next; }();
+            if (_expect(--pay.numFreeBlocks != 0, true))
                 pay.next = addrFromIdx(pay.memStart, () @trusted { return *(cast(uint*)pay.next); }());
             else pay.next = null;
+            static if (initialize) return emplace(ret, args);
+            else return ret;
         }
-        return ret;
+        return null;
     }
 
-    void deallocImpl(U)(U* p) @safe
+    void deallocImpl(U)(U* p)
     {
         pragma(inline, true);
         assert(pay, "dealloc called on uninitialized pool");
@@ -259,7 +272,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
 
         // store index of prev next to newly returned item
         uint* nip = () @trusted { return cast(uint*)p; }();
-        if (pay.next !is null)
+        if (_expect(pay.next !is null, true))
             *nip = idxFromAddr(pay.memStart, pay.next);
         else
             *nip = numBlocks;
@@ -398,4 +411,30 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
     auto pool = fixedPool!(int, 1024)(buf);
     auto i = pool.alloc();
     assert(cast(ubyte*)i == &buf[0]);
+}
+
+@("void initializers")
+@safe unittest
+{
+    {
+        auto pool = fixedPool!(int, 10);
+        auto a = pool.allocVoid();
+        auto b = pool.allocVoid();
+
+        // next index is left in place
+        assert(*a == 1);
+        assert(*b == 2);
+    }
+
+    {
+        auto pool = fixedPool!(4, 10);
+        auto a = pool.allocVoid!int();
+        auto b = pool.allocVoid!int();
+
+        // next index is left in place
+        assert(*a == 1);
+        assert(*b == 2);
+        pool.dealloc(a);
+        pool.dealloc(b);
+    }
 }
