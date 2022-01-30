@@ -2,7 +2,7 @@ module mempooled.fixed;
 
 debug import core.stdc.stdio;
 import core.memory : pureMalloc, pureCalloc, pureFree;
-import core.lifetime : emplace;
+import core.lifetime : emplace, forward;
 import mempooled.intrinsics;
 
 nothrow @nogc:
@@ -148,10 +148,10 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
          * Params: args = optional args to be used to initialize item
          * Returns: pointer to the allocated item or `null` if the pool is already depleted.
          */
-        U* alloc(U, ARGS...)(ARGS args)
+        U* alloc(U, ARGS...)(auto ref ARGS args)
         {
             static assert(U.sizeof <= blockSize, format!"Can't allocate %s of size %s with blockSize=%s"(U, U.sizeof, blockSize));
-            return allocImpl!(U, true)(args);
+            return allocImpl!(U, true)(forward!args);
         }
 
         /**
@@ -184,10 +184,10 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
          * Params: args = optional args to be used to initialize item
          * Returns: pointer to the allocated item or `null` if the pool is already depleted.
          */
-        T* alloc(ARGS...)(ARGS args)
+        T* alloc(ARGS...)(auto ref ARGS args)
         {
             pragma(inline)
-            return allocImpl!(T, true)(args);
+            return allocImpl!(T, true)(forward!args);
         }
 
         /**
@@ -227,7 +227,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         pay.initialize(buffer);
     }
 
-    U* allocImpl(U, bool initialize = true, ARGS...)(ARGS args)
+    U* allocImpl(U, bool initialize = true, ARGS...)(auto ref ARGS args)
     {
         pragma(inline, true);
         static assert(initialize || ARGS.length == 0);
@@ -437,4 +437,27 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         pool.dealloc(a);
         pool.dealloc(b);
     }
+}
+
+@("noncopyable")
+@safe unittest
+{
+    struct Foo
+    {
+        int n;
+        @disable this(this);
+    }
+
+    struct Bar
+    {
+        Foo* f;
+        this(ref Foo f) @trusted { this.f = &f; }
+    }
+
+    Foo f = Foo(42);
+    auto pool = fixedPool!(Bar, 10);
+    auto b = pool.alloc(f);
+    assert(b !is null);
+    assert(b.f !is null);
+    assert(b.f.n == 42);
 }
