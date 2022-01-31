@@ -177,7 +177,9 @@ struct DynamicPool(size_t blockSize)
             auto n = pay.pool.next;
             () @trusted { pureFree(pay.pool); }();
             pay.pool = n;
+            pay.numFreeBlocks--;
         }
+        assert(pay.numFreeBlocks == 0);
     }
 }
 
@@ -203,7 +205,7 @@ unittest
     assert(*x == 666);
     fpool.dealloc(x);
 
-    assert(pool.pay.numUsedBlocks == 3);
+    assert(pool.pay.numUsedBlocks == 4);
     pool.dealloc(n);
     pool.dealloc(buf);
     pool.dealloc(vbuf);
