@@ -14,5 +14,6 @@ configuration "betterC" {
 
 configuration "mempooled-test-betterC" {
     targetType "executable"
+    targetName "mempooled-test-betterC"
     buildOptions "betterC"
 }

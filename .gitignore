@@ -1,6 +1,4 @@
 mempooled-*
-mempooled
-!mempooled/
 *.o
 *.a
 *.lib
