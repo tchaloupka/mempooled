@@ -1,5 +1,6 @@
 module mempooled;
 
+public import mempooled.dynamic;
 public import mempooled.fixed;
 
 version (unittest)

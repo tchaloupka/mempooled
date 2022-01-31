@@ -8,11 +8,9 @@
 
 Fast efficient memory pools implementation supporting `@nogc` and `betterC`.
 
-**Note:** Currently only `fixedpool` is implemented.
-
 [Docs](https://tchaloupka.github.io/mempooled/mempooled.html)
 
-## fixedpool
+## FixedPool
 
 Implementation of "Fast Efficient Fixed-Size Memory Pool" as described in [this](http://www.thinkmind.org/download.php?articleid=computation_tools_2012_1_10_80006) article.
 
@@ -53,6 +51,39 @@ Foo* f = pool.alloc!Foo(42);
 Bar* b = pool.alloc!Bar();
 pool.dealloc(f);
 pool.dealloc(b);
+```
+
+## DynamicPool
+
+Simple implementation of memory blocks pool that are managed using linked list.
+Pool allocates blocks of the same size (defined in pool's template parameter).
+Whole block is consumed on `alloc`.
+
+### Sample usage
+
+```D
+DynamicPool!1024 pool; // each block is 1024B large
+auto n = pool.alloc!int(42); // allocates whole 1024B block for just an 4B large number
+assert(*n == 42);
+
+auto buf = pool.alloc!(ubyte[1024])(); // uses whole block and zeroes the array
+foreach (i; 0..1024) assert((*buf)[i] == 0);
+
+void* vbuf = pool.alloc(1024); // uses whole block that we can use as we please - block memory is uninitialized
+assert(vbuf !is null);
+
+// FixedPool over DynamicPool memory block
+auto fpblock = cast(ubyte*)pool.alloc(1024);
+auto fpool = fixedPool!(8, 128)(fpblock[0..1024]);
+auto x = fpool.alloc!int(666);
+assert(*x == 666);
+fpool.dealloc(x);
+
+// we must deallocate memory blocks in this case
+pool.dealloc(n);
+pool.dealloc(buf);
+pool.dealloc(vbuf);
+pool.dealloc(fpblock); // using fpool from this moment would cause problems
 ```
 
 ## How to use the lib

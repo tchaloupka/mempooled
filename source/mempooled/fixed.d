@@ -75,8 +75,13 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
             void initialize(ubyte[] buffer)
             {
                 import core.exception : onOutOfMemoryError;
-                assert(buffer is null || buffer.length == numBlocks * blockSize, "Provided buffer has wrong size, must be numBlocks*blockSize");
-                if (buffer) memStart = &buffer[0];
+                if (buffer)
+                {
+                    assert(
+                        buffer.length >= numBlocks * blockSize,
+                        "Provided buffer has wrong size, must be at least numBlocks*blockSize");
+                    memStart = &buffer[0];
+                }
                 else
                 {
                     memStart = () @trusted { return cast(ubyte*)pureCalloc(numBlocks, blockSize); }();
@@ -170,7 +175,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
          *
          * Params: p = allocated item pointer
          */
-        void dealloc(U)(U* p)
+        void dealloc(U)(ref U* p)
         {
             pragma(inline, true)
             deallocImpl(p);
@@ -206,7 +211,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
          *
          * Params: p = allocated item pointer
          */
-        void dealloc(T* p)
+        void dealloc(ref T* p)
         {
             pragma(inline, true)
             deallocImpl(p);
@@ -252,7 +257,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         return null;
     }
 
-    void deallocImpl(U)(U* p)
+    void deallocImpl(U)(ref U* p)
     {
         pragma(inline, true);
         assert(pay, "dealloc called on uninitialized pool");
@@ -280,6 +285,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
         // and use returned item as next free one
         pay.next = () @trusted { return cast(ubyte*)p; }();
         ++pay.numFreeBlocks;
+        p = null;
     }
 
     static ubyte* addrFromIdx(const ubyte* mstart, uint i) pure @trusted
@@ -308,16 +314,20 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
     assert(pool.capacity == 0);
     assert(pool.pay.next is null);
 
-    pool.dealloc(() @trusted { return cast(int*)pool.pay.memStart; }()); // dealocate first
+    int* pstart = () @trusted { return cast(int*)pool.pay.memStart; }();
+    pool.dealloc(pstart); // dealocate first
     assert(pool.capacity == 1);
     assert(pool.pay.next == pool.pay.memStart);
+    assert(pstart is null);
 
     auto i = pool.alloc();
     assert(pool.capacity == 0);
     assert(pool.pay.next is null);
 
-    pool.dealloc(() @trusted { return cast(int*)pool.pay.memStart; }()); // dealocate it back
-    pool.dealloc(() @trusted { return cast(int*)(pool.pay.memStart + int.sizeof*9); }()); // deallocate last one
+    pstart = () @trusted { return cast(int*)pool.pay.memStart; }();
+    int* pend = () @trusted { return cast(int*)(pool.pay.memStart + int.sizeof*9); }();
+    pool.dealloc(pstart); // dealocate it back
+    pool.dealloc(pend); // deallocate last one
     auto p = pool.alloc;
     assert(pool.pay.next == pool.pay.memStart);
     assert(cast(ubyte*)p == () @trusted { return pool.pay.memStart + int.sizeof*9; }());
