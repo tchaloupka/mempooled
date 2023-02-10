@@ -1,5 +1,5 @@
 project('mempooled', 'd',
-    version: '3.1.0'
+    version: '0.3.1'
 )
 
 mempooled_build_versions = []
