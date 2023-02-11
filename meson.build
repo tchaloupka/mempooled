@@ -23,11 +23,16 @@ mempooled_dep = declare_dependency(
     link_with: mempooled_lib
 )
 
+bc_link_args = []
+if meson.get_compiler('d').get_id() == 'llvm'
+    bc_link_args += '-link-defaultlib-shared=false'
+endif
+
 test_exe = executable(
     'mempooled-test',
     mempooled_src,
     include_directories: include_directories('source'),
     d_args: ['-betterC', '-unittest'],
-    link_args: ['-link-defaultlib-shared=false']
+    link_args: bc_link_args
 )
 test('bctest', test_exe)
