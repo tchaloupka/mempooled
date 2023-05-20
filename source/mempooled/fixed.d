@@ -251,7 +251,7 @@ struct FixedPool(size_t blockSize, size_t numBlocks, T = void)
             if (_expect(--pay.numFreeBlocks != 0, true))
                 pay.next = addrFromIdx(pay.memStart, () @trusted { return *(cast(uint*)pay.next); }());
             else pay.next = null;
-            static if (initialize) return emplace(ret, args);
+            static if (initialize) return emplace(ret, forward!args);
             else return ret;
         }
         return null;
