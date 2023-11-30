@@ -8,7 +8,7 @@ import mempooled.intrinsics;
 nothrow @nogc:
 
 /**
- * Memory pool implemented ower linked list of allocated blocks that are being reused.
+ * Memory pool implemented over linked list of allocated blocks that are being reused.
  * If there is no preallocated block in the pool, it allocates the new one from the heap.
  * When block is returned to the pool, it's just prepended at the start of the unused blocks to be available again.
  *
@@ -80,6 +80,7 @@ struct DynamicPool(size_t blockSize)
             if (pay.refs == 0)
             {
                 // debug printf("free\n");
+                assert(pay.numUsedBlocks == 0, "Some blocks are still being used!");
                 destroy(*pay); // call payload destructor
                 () @trusted { pureFree(pay); } ();
             }
